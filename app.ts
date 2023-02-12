@@ -2,10 +2,6 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 
-type Options = {
-  timeout: string;
-};
-
 let args = process.argv
   .map((v, i) => {
     return i > 1 ? v : undefined;
@@ -44,42 +40,44 @@ function parseArguments(opts: Array<string>, args: Array<string>) {
   return { options, leftArgs };
 }
 
-function getTimeout(arg: string | undefined) {
-    if(arg==undefined){
-      let now = new Date()
-        return `${now.getMinutes()} ${now.getHours()} * * *`
-}
-  let regex = /((?<duration>\d){1,2}(?<time>[hwmd]){1})/giy;
+function getTimeout(arg: string|undefined) {
+  if (arg == undefined) {
+      let now = new Date();
+      return `${now.getMinutes()} ${now.getHours()} * * *`;
+  }
+  let regex = /((?<duration>\d{1,2})(?<time>[hwmdn]){1})/giy;
   let res;
   let matches = [];
-  let time = new Map([
-    ["w", "week"],
-    ["h", "hour"],
-    ["d", "day"],
-    ["m", "month"],
-  ]);
-  let timeToSecs = new Map([
-    ["week", 604800000],
-    ["hour", 3600000],
-    ["day", 86400000],
-    ["month", 2.628e+9],
-  ]);
-  while ((res = regex.exec(arg)) != null) {
-    matches.push(res.groups);
+
+  let time= {
+    w:604800000,
+    h: 3600000,
+    d:86400000,
+    m: 2.628e+9,
+    n: 60000
   }
-  let now = Date.now()
-  let timeout =  matches
-    .map((v) => Object.assign({}, v))
-    .reduce(
-      // @ts-ignore
-      (acc, cur) => ({ ...acc, [time.get(cur.time) as string]: parseInt(cur.duration) }),
-      {}
-    );
-  let timeinMili = 0
-  for (let k in timeout) timeinMili+=(timeToSecs.get(k)as number)*parseInt(timeout[k])
-  let predicteTime = new Date(now+timeinMili)
   
-  return `${predicteTime.getMinutes()} ${predicteTime.getHours()} ${predicteTime.getDate()} ${predicteTime.getMonth()} ${predicteTime.getDay()}`
+  while ((res = regex.exec(arg)) != null) {
+      matches.push(res.groups);
+  }
+  let now = new Date();
+  let timeout = matches
+      .map((v) => Object.assign({}, v))
+      .reduce(
+  // @ts-ignore
+  (acc, cur) => acc+cur.duration*time[cur.time], 0);
+  
+  let predicteTime = new Date(now.getTime() + timeout);
+  let starOrValue = (method:string, df?:boolean)=>{
+    if(df){
+      // @ts-ignore
+        return predicteTime[method]()
+    }
+    // @ts-ignore
+    return predicteTime[method]()==now[method]()?"*":predicteTime[method]()
+  }
+  
+  return `${starOrValue("getMinutes", true)} ${starOrValue("getHours", true)} ${starOrValue("getDate")} ${starOrValue("getMonth")} ${starOrValue("getDay")}`;
 }
 
 export function createDirWithDelete() {
