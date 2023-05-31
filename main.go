@@ -10,12 +10,12 @@ import (
 	"path/filepath"
 	_ "strings"
 
-	"github.com/hornedout-law/tmkdir/cli"
+	"github.com/hornedout-law/tmkdir/tcron"
 )
 
 // get home directory
 
-var flags cli.Flags = cli.Flags{}
+var flags tcron.Flags = tcron.Flags{}
 var commands []string = []string{"list", "remove", "create"}
 
 func IsValid(fp string) bool {
@@ -73,9 +73,8 @@ func init() {
 func main() {
 	flag.Parse()
 	// get directories
-	fmt.Println("days until exec: ", *(flags.Day), "\nweeks until exec: ", flags.Week, "\nmonths until exec: ", flags.Month, "\nhours until exec: ", flags.Hour, "\ndata of exec: ", flags.Date)
 	args := flag.Args()
-	fmt.Println("left over argumets: ", args)
 	cmd, dir := getCommandAndDirectory(args)
-	fmt.Println("command to be executed: ", cmd, "\ndirectory to be used with", dir)
+
+
 }

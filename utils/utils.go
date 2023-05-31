@@ -1,8 +1,9 @@
 package utils
 
 import (
-    "fmt"
-    "log"
+	"fmt"
+	"log"
+
 )
 
 func HandleError(err error, message string) {
@@ -16,6 +17,6 @@ func HandleError(err error, message string) {
 	}
 }
 
-func parseSchedule(f TimeFlags){
+func parseSchedule(){
 
 }

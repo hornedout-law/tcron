@@ -4,87 +4,111 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	_ "io/fs"
+	"io/fs"
 	"io/ioutil"
 	"log"
-	_ "log"
-	_ "net"
-	_ "net/rpc"
+	"math/rand"
+	"net"
+	"net/http"
+	"net/rpc"
 	"os"
+	"os/exec"
 	"path/filepath"
-	_ "strings"
 	"time"
-
-	"github.com/go-playground/locales/root"
-	_ "github.com/hornedout-law/tmkdir/utils"
-	"gopkg.in/ini.v1"
 )
 
 type Task struct {
-    Schedule string `json:"schedule"`
+    Schedule Schedule `json:"schedule"`
     Command  string `json:"command"`
 }
 
 
-//func runTask(task Task) {
-//	schedule, err := parseSchedule(task.Schedule)
-//	if err != nil {
-//		log.Printf("Failed to parse schedule for command '%s': %s", task.Command, err)
-//		return
-//	}
-//
-//	for {
-//		now := time.Now().UTC()
-//		nextRun := schedule.Next(now)
-//
-//		// Calculate the duration until the next run
-//		duration := nextRun.Sub(now)
-//
-//		// Sleep until the next run
-//		time.Sleep(duration)
-//
-//		// Execute the command
-//		cmd := exec.Command("sh", "-c", task.Command)
-//		cmd.Stdout = os.Stdout
-//		cmd.Stderr = os.Stderr
-//
-//		err := cmd.Run()
-//		if err != nil {
-//			log.Printf("Failed to execute command '%s': %s", task.Command, err)
-//		} else {
-//			log.Printf("Executed command '%s'", task.Command)
-//		}
-//	}
-//}
-//
+type Flags struct {
+	Day   *int
+	Week  *int
+	Month *int
+	Hour  *int
+    SetAt time.Time
+}
 
+
+// a Schedule needs to be retrieved from a source when a the process shuts down
+
+type Schedule struct {
+    StartedAt time.Time
+    Phase time.Duration
+}
+
+
+func (schd Schedule ) Next() int64{
+    // calculate the time until the next execution 
+    until_next_exec := (time.Now().UnixMilli()-schd.StartedAt.UnixMilli())%int64(schd.Phase)
+    return until_next_exec
+}
+
+
+func (flags Flags)parseSchedule() Schedule{
+    hourInMilli := 60*60*1000
+    phase := (*(flags.Day)*24+*(flags.Month)*24*30+*(flags.Week)*24*7+hourInMilli)*hourInMilli
+    return Schedule{flags.SetAt, time.Duration(phase)}
+}
+
+
+type stack interface {
+    run() 
+    runOnce(j Job) (string, error)
+    runTask(t Task) (string, error)
+    append(j Job) 
+    pop(id string) error
+}
 
 type Job struct {
     Id       string `json:"id"`
     Task       Task `json:"task"`
-    Created_at time.Time `json:"created_at"`
-    Last_exec  time.Time `json:"last_exec"`
-    Next_exec  time.Time `json:"next_exec"`
+    RunOnce bool `json:"runOnce"`
 }
 
-// this is the core interface to handle the Tasker data structure
-type tasker interface {
-	ReadCronJobs() ([]Job, error)
-	AddCronjob() (int, error)
-	RemoveCronjob(id string) error
+// Stack represents the cronjobs registered
+
+type Stack struct {
+    Stk []Job `json:"stack"`
 }
 
-type Tasker struct {
-	jobs []Job
+type Tcron struct {
+    Listener net.Listener
+    Stack *Stack
+    Logger Logger
 }
 
-func (t *Tasker) ReadCronjobs() ([]Job, error) {
+type Logger struct {
+    ErrorLog *fs.FileInfo
+    OutPutLog *fs.FileInfo
+}
+
+type logger interface {
+    LogError (err error) 
+    LogOutput (output string)
+}
+
+// generage Job id
+func generateId() string {
+    randBytes := make([]byte, 20)
+    _, err:= rand.Read(randBytes)
+    if err!=nil {
+        log.Fatal("error genrating random slice of bytes : ",err)
+    }
+    return string(randBytes)
+}
+
+// Read ~/.tcron.json and parse json output into a Stack struct 
+
+func (tc Tcron) init() (Stack, error) {
 	HOME := os.Getenv("HOME")
-    var jobs []Job
+    var newStack Stack
     absolutePath := filepath.Clean(HOME+"/.tcron.json")
     _, err:= os.Stat(absolutePath)
     if err!=nil {
-        initBytes, err := json.Marshal(jobs)
+        initBytes, err := json.Marshal(newStack)
         if err!=nil {
             fmt.Println("error marsheling initial bytes.")
             log.Fatal(err)
@@ -100,29 +124,30 @@ func (t *Tasker) ReadCronjobs() ([]Job, error) {
 	cronFile, err := os.ReadFile(absolutePath)
 	if err!=nil {
         fmt.Println("failer to read ~/.tcron.json")
-        return nil, err
+        return newStack, err
     }
-    err = json.Unmarshal(cronFile, jobs)
+    err = json.Unmarshal(cronFile,newStack)
     
 	if err!=nil {
         fmt.Println("failer to parse ~/.tcron.json")
-        return nil, err
+        return newStack, err
     }
-    t.jobs = jobs
-    return jobs, nil
+    tc.Stack = &newStack
+    return newStack, nil
 	
 }
 
-func (t *Tasker) AddCronjob(task Task) (int, error) {
+func (s *Stack) append(task Task) *Stack{
     newJob := Job{}
     newJob.Task = task
-    t.jobs = append(t.jobs, newJob)
-    return 0, nil
+    newJob.Id = generateId()
+    s.Stk = append(s.Stk, newJob)
+    return s
 }
 
-func (t *Tasker) RemoveCronjob(id string) error {
+func (t *Stack) pop(id string) error {
     i:=-1
-    for j, job := range t.jobs{
+    for j, job := range t.Stk{
         if id == job.Id {
             i=j
         }
@@ -130,43 +155,60 @@ func (t *Tasker) RemoveCronjob(id string) error {
     if i<0{
         return errors.New(fmt.Sprint("cronjob with id: ", id, "does not exist."))
     }else {
-        t.jobs = append(t.jobs[:i], t.jobs[:i+1]...)
+        t.Stk = append(t.Stk[:i], t.Stk[:i+1]...)
         return nil
     }
 }
 
-
-//this is a server implement
-
-type Scheduler struct {
-	tasker Tasker
-}
-
-type scheduler interface {
-    run()
-    reload()
-    start()
-    stop()
-}
-
-func (s *Scheduler) start(){
-    jobs, err := s.tasker.ReadCronjobs()
-    if err!=nil{
-        fmt.Print(err)
-        os.Exit(1)
-    }
-    for _, job := range jobs {
-        go s.run(job)
+func (s *Stack)run(){
+    for _, job := range s.Stk {
+        if job.RunOnce == true {
+            go s.runOnce(job)
+        }else {
+            go s.runTask(job.Task)
+        }
     }
     select {}
 }
 
-func (s *Scheduler) run(j Job){
-    for {
-        schedule, err:= utils.ParseSchedule(j.Task.Schedule)
+
+func (s *Stack) runTask (t Task ) {
+    sleeptime := t.Schedule.Next()
+
+    time.Sleep(time.Duration(sleeptime))
+
+
+    cmd := exec.Command("sh", "-c", t.Command)
+    cmd.Run()
+    
+}
+
+func (s *Stack) runOnce(j Job) {
+    s.runTask(j.Task)
+    s.pop(j.Id)
+}
+
+func (tc Tcron) start(){
+    stack, err := tc.init()
+    tc.Stack = &stack
+    if err!=nil {
+        fmt.Println("error initializing Stack")
+        log.Fatal(err)
     }
+    go tc.Stack.run()
+    rpc.Register(Stack)
+    l, err := net.Listen("tcp", ":6450")
+    
+    tc.Listener = l
+    go http.Serve(l)
 }
 
-func init() {
-
+func (tc Tcron) reload(){
+    tc.start()
 }
+
+func (tc Tcron) stop(){
+
+    tc.Listener.Close()
+}
+
