@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	_ "strings"
 
-	"github.com/hornedout-law/tmkdir/tcron"
+    "github.com/hornedout-law/tcron/core"
 )
 
 // get home directory

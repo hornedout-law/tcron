@@ -1,3 +1,3 @@
-module github.com/hornedout-law/tmkdir
+module github.com/hornedout-law/tcron
 
 go 1.18
