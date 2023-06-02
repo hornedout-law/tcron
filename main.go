@@ -61,20 +61,7 @@ func getCommandAndDirectory(args []string) (string, string) {
 	return "create", args[0]
 }
 
-func init() {
-
-	flags.Day = flag.Int("d", 1, "days until next exec")
-	flags.Week = flag.Int("w", 1, "weeks until next exec")
-	flags.Month = flag.Int("m", 1, "months until next exec")
-	flags.Hour = flag.Int("h", 1, "hours until next exec")
-	flags.Date = flag.String("D", "", "")
-}
 
 func main() {
-	flag.Parse()
-	// get directories
-	args := flag.Args()
-	cmd, dir := getCommandAndDirectory(args)
-
-
+    fmt.Println("")
 }

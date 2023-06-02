@@ -1,4 +1,4 @@
-package tcron
+package core
 
 import (
 	"encoding/json"
@@ -20,7 +20,7 @@ import (
 type Task struct {
     Schedule Schedule `json:"schedule"`
     Command  string `json:"command"`
-}
+} 
 
 
 type Flags struct {
@@ -126,7 +126,7 @@ func (tc Tcron) init() (Stack, error) {
         fmt.Println("failer to read ~/.tcron.json")
         return newStack, err
     }
-    err = json.Unmarshal(cronFile,newStack)
+    err = json.Unmarshal(cronFile,&newStack)
     
 	if err!=nil {
         fmt.Println("failer to parse ~/.tcron.json")
@@ -196,14 +196,17 @@ func (tc Tcron) start(){
         log.Fatal(err)
     }
     go tc.Stack.run()
-    rpc.Register(Stack)
+    
+    rpc.Register(stack)
+    rpc.HandleHTTP()
     l, err := net.Listen("tcp", ":6450")
     
     tc.Listener = l
-    go http.Serve(l)
+    go http.Serve(l, nil)
 }
 
 func (tc Tcron) reload(){
+    tc.stop()
     tc.start()
 }
 
