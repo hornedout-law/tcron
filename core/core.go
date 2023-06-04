@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
 )
 
 type Task struct {
@@ -31,6 +32,7 @@ type Flags struct {
     SetAt time.Time
 }
 
+// add end endpoints to Stack
 
 // a Schedule needs to be retrieved from a source when a the process shuts down
 
@@ -47,7 +49,7 @@ func (schd Schedule ) Next() int64{
 }
 
 
-func (flags Flags)parseSchedule() Schedule{
+func (flags Flags)ParseSchedule() Schedule{
     hourInMilli := 60*60*1000
     phase := (*(flags.Day)*24+*(flags.Month)*24*30+*(flags.Week)*24*7+hourInMilli)*hourInMilli
     return Schedule{flags.SetAt, time.Duration(phase)}
@@ -55,11 +57,11 @@ func (flags Flags)parseSchedule() Schedule{
 
 
 type stack interface {
-    run() 
-    runOnce(j Job) (string, error)
-    runTask(t Task) (string, error)
-    append(j Job) 
-    pop(id string) error
+    Run() 
+    RunOnce(j Job) (string, error)
+    RunTask(t Task) (string, error)
+    Append(j Job) 
+    Pop(id string) error
 }
 
 type Job struct {
@@ -71,7 +73,7 @@ type Job struct {
 // Stack represents the cronjobs registered
 
 type Stack struct {
-    Stk []Job `json:"stack"`
+    Stack []Job `json:"stack"`
 }
 
 type Tcron struct {
@@ -91,7 +93,7 @@ type logger interface {
 }
 
 // generage Job id
-func generateId() string {
+func GenerateId() string {
     randBytes := make([]byte, 20)
     _, err:= rand.Read(randBytes)
     if err!=nil {
@@ -102,7 +104,7 @@ func generateId() string {
 
 // Read ~/.tcron.json and parse json output into a Stack struct 
 
-func (tc Tcron) init() (Stack, error) {
+func (tc Tcron) Init() (Stack, error) {
 	HOME := os.Getenv("HOME")
     var newStack Stack
     absolutePath := filepath.Clean(HOME+"/.tcron.json")
@@ -137,17 +139,17 @@ func (tc Tcron) init() (Stack, error) {
 	
 }
 
-func (s *Stack) append(task Task) *Stack{
+func (s *Stack) Append(task Task) *Stack{
     newJob := Job{}
     newJob.Task = task
-    newJob.Id = generateId()
-    s.Stk = append(s.Stk, newJob)
+    newJob.Id = GenerateId()
+    s.Stack = append(s.Stack, newJob)
     return s
 }
 
-func (t *Stack) pop(id string) error {
+func (t *Stack) Pop(id string) error {
     i:=-1
-    for j, job := range t.Stk{
+    for j, job := range t.Stack{
         if id == job.Id {
             i=j
         }
@@ -155,47 +157,46 @@ func (t *Stack) pop(id string) error {
     if i<0{
         return errors.New(fmt.Sprint("cronjob with id: ", id, "does not exist."))
     }else {
-        t.Stk = append(t.Stk[:i], t.Stk[:i+1]...)
+        t.Stack = append(t.Stack[:i], t.Stack[:i+1]...)
         return nil
     }
 }
 
-func (s *Stack)run(){
-    for _, job := range s.Stk {
+func (s *Stack)Run(){
+    for _, job := range s.Stack {
         if job.RunOnce == true {
-            go s.runOnce(job)
+            go s.RunOnce(job)
         }else {
-            go s.runTask(job.Task)
+            go s.RunTask(job.Task)
         }
     }
     select {}
 }
 
 
-func (s *Stack) runTask (t Task ) {
+func (s *Stack) RunTask (t Task ) {
     sleeptime := t.Schedule.Next()
 
     time.Sleep(time.Duration(sleeptime))
-
 
     cmd := exec.Command("sh", "-c", t.Command)
     cmd.Run()
     
 }
 
-func (s *Stack) runOnce(j Job) {
-    s.runTask(j.Task)
-    s.pop(j.Id)
+func (s *Stack) RunOnce(j Job) {
+    s.RunTask(j.Task)
+    s.Pop(j.Id)
 }
 
-func (tc Tcron) start(){
-    stack, err := tc.init()
+func (tc Tcron) Start(){
+    stack, err := tc.Init()
     tc.Stack = &stack
     if err!=nil {
         fmt.Println("error initializing Stack")
         log.Fatal(err)
     }
-    go tc.Stack.run()
+    go tc.Stack.Run()
     
     rpc.Register(stack)
     rpc.HandleHTTP()
@@ -205,13 +206,57 @@ func (tc Tcron) start(){
     go http.Serve(l, nil)
 }
 
-func (tc Tcron) reload(){
-    tc.stop()
-    tc.start()
+func (tc Tcron) Reload(){
+    tc.Stop()
+    tc.Start()
 }
 
-func (tc Tcron) stop(){
+func (tc Tcron) Stop(){
 
     tc.Listener.Close()
 }
 
+// type Arith int
+// 
+// func (t *Arith) Multiply(args *Args, reply *int) error {
+// 	*reply = args.A * args.B
+// 	return nil
+// }
+// 
+// func (t *Arith) Divide(args *Args, quo *Quotient) error {
+// 	if args.B == 0 {
+// 		return errors.New("divide by zero")
+// 	}
+// 	quo.Quo = args.A / args.B
+// 	quo.Rem = args.A % args.B
+// 	return nil
+// }
+
+// make api endpoints for tmkdir
+
+type TArgs struct {
+    Flags Flags
+    Path string
+    IsFile bool
+}
+
+type TReply int64
+
+type TcronC interface {
+    CreateTcronEntry(ta *TArgs, reply *TReply)
+} 
+// for this shit to work it need
+func (tc *Tcron) CreateTcronEntry(ta *TArgs, reply *TReply) error {
+    schedule := ta.Flags.ParseSchedule()
+    // expect path to be a full path
+    var task Task
+    if ta.IsFile == true {
+        task = Task{schedule, fmt.Sprintf("rm %s", ta.Path)} 
+    } else {
+        task = Task{schedule, fmt.Sprintf("rm -r %s", ta.Path)}
+    }
+
+    tc.Stack.RunOnce(Job{GenerateId(), task, true})
+    *reply = TReply(schedule.Next())
+    return nil
+}
