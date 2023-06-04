@@ -55,8 +55,8 @@ func (flags Flags)ParseSchedule() Schedule{
     return Schedule{flags.SetAt, time.Duration(phase)}
 }
 
-
-type stack interface {
+// a Tasker is 
+type Tasker interface {
     Run() 
     RunOnce(j Job) (string, error)
     RunTask(t Task) (string, error)
