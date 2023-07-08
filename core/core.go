@@ -18,6 +18,8 @@ import (
 
 )
 
+var Port string = "6450"
+
 type Task struct {
     Schedule Schedule `json:"schedule"`
     Command  string `json:"command"`
@@ -198,9 +200,9 @@ func (tc Tcron) Start(){
     }
     go tc.Stack.Run()
     
-    rpc.Register(stack)
+    rpc.Register(tc)
     rpc.HandleHTTP()
-    l, err := net.Listen("tcp", ":6450")
+    l, err := net.Listen("tcp", ":"+Port)
     
     tc.Listener = l
     go http.Serve(l, nil)
@@ -259,4 +261,14 @@ func (tc *Tcron) CreateTcronEntry(ta *TArgs, reply *TReply) error {
     tc.Stack.RunOnce(Job{GenerateId(), task, true})
     *reply = TReply(schedule.Next())
     return nil
+}
+
+func InitializeTcron() (*rpc.Client, error){
+    client, error := rpc.DialHTTP("tcp", ":"+Port)
+    if error!=nil {
+        tcron := Tcron{}
+        tcron.Start()
+    }
+    client,error = rpc.DialHTTP("tcp", ":"+Port)
+    return client, error
 }
