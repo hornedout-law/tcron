@@ -53,7 +53,7 @@ func (schd Schedule ) Next() int64{
 
 func (flags Flags)ParseSchedule() Schedule{
     hourInMilli := 60*60*1000
-    phase := (flags.Day*24+flags.Month*24*30+flags.Week*24*7+hourInMilli)*hourInMilli
+    phase := (flags.Day*24+flags.Month*24*30+flags.Week*24*7+flags.Hour)*hourInMilli
     return Schedule{flags.SetAt, time.Duration(phase)}
 }
 
