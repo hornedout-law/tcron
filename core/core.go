@@ -199,8 +199,9 @@ func (tc Tcron) Start(){
         log.Fatal(err)
     }
     go tc.Stack.Run()
-    
-    rpc.Register(&tc)
+    tcronRPC := new(TcronRPC)
+    tcronRPC.Core = &tc
+    rpc.Register(tcronRPC)
     rpc.HandleHTTP()
     l, err := net.Listen("tcp", ":"+Port)
     
@@ -246,9 +247,14 @@ type TReply int64
 
 type TcronC interface {
     CreateTcronEntry(ta *TArgs, reply *TReply)
-} 
+}
+
+type TcronRPC struct {
+    Core *Tcron
+}
 // for this shit to work it need
-func (tc *Tcron) CreateTcronEntry(ta *TArgs, reply *TReply) error {
+func (tc *TcronRPC) CreateTcronEntry(ta *TArgs, reply *TReply) error {
+
     schedule := ta.Flags.ParseSchedule()
     // expect path to be a full path
     var task Task
@@ -258,7 +264,7 @@ func (tc *Tcron) CreateTcronEntry(ta *TArgs, reply *TReply) error {
         task = Task{schedule, fmt.Sprintf("rm -r %s", ta.Path)}
     }
 
-    tc.Stack.RunOnce(Job{GenerateId(), task, true})
+    tc.Core.Stack.RunOnce(Job{GenerateId(), task, true})
     *reply = TReply(schedule.Next())
     return nil
 }
