@@ -200,7 +200,7 @@ func (tc Tcron) Start(){
     }
     go tc.Stack.Run()
     
-    rpc.Register(tc)
+    rpc.Register(&tc)
     rpc.HandleHTTP()
     l, err := net.Listen("tcp", ":"+Port)
     
